@@ -1,0 +1,53 @@
+{
+  "input": "australia.jsonl",
+  "elasticsearch": {
+    "host": "http://127.0.0.1:9200",
+    "index": "population",
+    "id": "id",
+    "username": "username",
+    "password": "file:example-password.txt"
+  },
+  "s3": {
+    "bucket": "elastic-examples",
+    "key": "populations/$date/populations.txt"
+  },
+  "tasks": {
+    "dump": true,
+    "index": true,
+    "recreate": true,
+    "upload": true
+  },
+  "output": {
+    "tmp-folder": "tmp"
+  },
+  "schema-package": "schema",
+  "schema-type-name": "SchemaType",
+  "schema": {
+    "id": "key",
+    "country": "string",
+    "year": "int",
+    "population": "int"
+  },
+  "upload": {
+    "transform": {
+      "fields": [
+        {
+          "name": "id"
+        },
+        {
+          "name": "country"
+        },
+        {
+          "name": "year"
+        },
+        {
+          "name": "population"
+        }
+      ]
+    }
+  }
+}
+
+
+
+

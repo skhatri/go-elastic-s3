@@ -1,0 +1,7 @@
+elastics3
+vendor
+entries.json
+schema/*
+tmp
+.idea
+*private*
