@@ -23,6 +23,11 @@ type IndexPayload struct {
 	Data  string
 }
 
+func NewElasticClient(elasticConfig model.ElasticSearchConfig) *elasticsearch7.Client {
+	client, _ := newElasticClient(elasticConfig)
+	return client
+}
+
 func newElasticClient(elasticConfig model.ElasticSearchConfig) (*elasticsearch7.Client, error) {
 	elasticCfg := elasticsearch7.Config{
 		Addresses: []string{
@@ -132,6 +137,105 @@ func IndexDocument(ctx context.Context, payload IndexPayload, elasticClient *ela
 		result = r.StatusCode == 201
 	}
 	return result
+}
+func AliasExists(ctx context.Context, aliasName string, elasticClient *elasticsearch7.Client) bool {
+	c, cfn := context.WithTimeout(ctx, time.Duration(5*time.Second))
+	defer cfn()
+	aliasCheckRequest := esapi.IndicesExistsAliasRequest{
+		Name: []string{aliasName},
+	}
+	res, err := aliasCheckRequest.Do(c, elasticClient)
+	if err != nil {
+		log.Fatal("error checking alias", err)
+	}
+	return res.StatusCode <= 300
+}
+
+func GetIndexForAlias(ctx context.Context, aliasName string, elasticClient *elasticsearch7.Client) []string {
+	c, cfn := context.WithTimeout(ctx, time.Duration(5*time.Second))
+	defer cfn()
+	aliasGetRequest := esapi.IndicesGetAliasRequest{
+		Name: []string{aliasName},
+	}
+	res, err := aliasGetRequest.Do(c, elasticClient)
+	if err != nil {
+		log.Fatal("error getting alias", err)
+	}
+	var indices = make([]string, 0)
+	if res.StatusCode <= 300 {
+		aliasResult := make(map[string]interface{}, 0)
+		json.NewDecoder(res.Body).Decode(&aliasResult)
+		for k, _ := range aliasResult {
+			indices = append(indices, k)
+		}
+	}
+	return indices
+}
+
+func AliasUpdate(ctx context.Context,
+	indexName string,
+	aliasName string,
+	elasticClient *elasticsearch7.Client) bool {
+	updateResult := false
+	if AliasExists(ctx, aliasName, elasticClient) {
+		c, cfn := context.WithTimeout(ctx, time.Duration(5*time.Second))
+		defer cfn()
+		indices := GetIndexForAlias(context.TODO(), aliasName, elasticClient)
+		instructions := make([]string, 0)
+		for _, existingIndices := range indices {
+			instruction := fmt.Sprintf(`{
+  "remove": {
+    "index": "%s", "alias": "%s"
+  } 
+}`, existingIndices, aliasName)
+			instructions = append(instructions, instruction)
+		}
+		addInstruction := fmt.Sprintf(`{
+  "add": {
+    "index": "%[1]s", "alias": "%[2]s"
+  } 
+}`, indexName, aliasName)
+		instructions = append(instructions, addInstruction)
+		body := strings.Join(instructions, ",\n")
+		updateBody := bytes.NewBufferString(fmt.Sprintf(`{
+			"actions": [
+				%s		
+			]
+		}`, body))
+		aliasUpdateRequest := esapi.IndicesUpdateAliasesRequest{
+			Body: updateBody,
+		}
+		res, err := aliasUpdateRequest.Do(c, elasticClient)
+		if err != nil {
+			log.Fatal("error updating alias", err)
+		}
+		updateResult = res.StatusCode <= 300
+
+	} else {
+		c, cfn := context.WithTimeout(ctx, time.Duration(5*time.Second))
+		defer cfn()
+		aliasPutRequest := esapi.IndicesPutAliasRequest{
+			Index: []string{indexName},
+			Name:  aliasName,
+		}
+		res, err := aliasPutRequest.Do(c, elasticClient)
+		if err != nil {
+			log.Fatal("error adding alias", err)
+		}
+		updateResult = res.StatusCode <= 300
+	}
+	return updateResult
+}
+
+func DeleteIndex(ctx context.Context, indexName string, elasticClient *elasticsearch7.Client) bool {
+	delRequest := esapi.IndicesDeleteRequest{
+		Index: []string{indexName},
+	}
+	res, err := delRequest.Do(ctx, elasticClient)
+	if err != nil {
+		log.Fatal("error deleting index", err)
+	}
+	return res.StatusCode <= 300
 }
 
 func EnsureIndexExists(cfg model.ElasticS3Config, elasticClient *elasticsearch7.Client) {

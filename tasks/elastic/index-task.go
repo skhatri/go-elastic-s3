@@ -38,7 +38,7 @@ func IndexFile(cfg model.ElasticS3Config) {
 
 	reader := bufio.NewReader(file)
 	skip := 0
-	limit := -1
+	limit := 100
 	var success = 0
 	var failure = 0
 	for {
@@ -82,4 +82,5 @@ func IndexFile(cfg model.ElasticS3Config) {
 	fmt.Println("total records", total)
 	fmt.Println("indexed", success)
 	fmt.Printf("time taken %f seconds\n", time.Since(start).Seconds())
+
 }
